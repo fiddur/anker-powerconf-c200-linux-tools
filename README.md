@@ -24,9 +24,9 @@ Currently exposed controls:
 
 - `fov`
 - `hdr`
-- `horizontal_flip`
-- `vertical_screen`
-- `anti_flicker`
+- `horizontal_flip` (only applies while streaming, see notes below)
+- `vertical_screen` (not implemented on all firmware, see notes below)
+- `anti_flicker` (asymmetric read-back, see notes below)
 - `brightness`
 - `contrast`
 - `saturation`
@@ -73,6 +73,38 @@ Other confirmed vendor selectors currently wired into the CLI:
 - `0x11`: `horizontal_flip`
 - `0x12`: `anti_flicker`
 - `0x13`: `hdr`
+
+### Firmware observations (291a:3369, firmware as shipped 2026-09)
+
+Measured on a single unit, so some of this may be firmware specific.
+
+- `fov` and `zoom_absolute` are two interfaces onto the same control.
+  Selecting a preset moves `zoom_absolute` to `100` (95 deg), `175` (78 deg)
+  or `295` (65 deg). Changing `zoom_absolute` afterwards widens or narrows the
+  image while `fov` keeps reporting the last preset written, so the `fov`
+  read-back goes stale. `zoom_absolute` scales by area rather than linearly,
+  so the linear crop is `sqrt(zoom / 100)`; that is why `295` lands on 65 deg.
+- `anti_flicker` is asymmetric. It takes `0`, `1` and `2` on write but reads
+  back `0`, `50` and `60` respectively. Anything above `2` clamps to `60`.
+- `vertical_screen` (selector `0x0a`) is not implemented on this firmware.
+  `GET_LEN` fails for that selector and the extension unit's `bmControls`
+  bitmap (`0x00 0xf8 0x27`) does not advertise it.
+- `hdr` works, but its read-back does not. Writes take effect: toggling it
+  while streaming moves mean frame luminance by roughly 20 levels out of 255
+  and visibly lifts shadow detail, and the change reverts when it is switched
+  back. `GET_CUR` nevertheless always returns `1`, both idle and while
+  streaming, so the CLI cannot report the real state.
+- `horizontal_flip` only takes effect while the camera is streaming. Toggled
+  against a running stream it mirrors the image correctly, confirmed by
+  comparing captured frames against their own mirror. Writes made while the
+  camera is idle are silently dropped: the register reads back `0` and the
+  setting does not carry into the next stream. `hdr`, by contrast, can be set
+  either way.
+- Selectors `0x0d`, `0x0f` and `0x16` are live (`GET_LEN` 60, `GET_INFO` 3)
+  and currently read `1`, but their meaning is unknown.
+- The extension unit GUID as stored in the descriptor is
+  `41769ea2-04de-e347-8b2b-f4341aff003b`, which is the UVC H.264 XU GUID with
+  its first three fields byte-reversed. Anker does the same on the C310.
 
 ## Releases
 
